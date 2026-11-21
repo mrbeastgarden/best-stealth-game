@@ -1,8 +1,11 @@
-// Shadow Vault — level data and tuning constants.
+// Coldwire — level data and tuning constants (v2: named heists).
 // Tiles: '#' wall, '.' floor, '~' shadow (dark cover), 'P' player start,
-// 'R' relic (the objective), 'E' exit. Guards patrol the waypoint lists
-// (tile coordinates, [x, y]); every waypoint must be a floor tile.
+// 'R' objective item, 'E' exit, 'V' vent, '$' loot. Guards patrol the
+// waypoint lists (tile coordinates, [x, y]); every waypoint must be a
+// floor tile. Vents come in pairs: press E near one to crawl to the other.
 
+// Vents come in pairs: press E near one to crawl to the other.
+// A level with vents must have exactly two, on floor tiles.
 export const TILE = 48;
 export const COLS = 20;
 export const ROWS = 13;
@@ -32,25 +35,41 @@ export const ALERT_GIVE_UP = 2.5;
 // Caught when an alerted guard gets this close (tiles).
 export const CATCH_DISTANCE = 0.55;
 
+// Gadgets, refreshed at the start of every level.
+export const COINS_PER_LEVEL = 5; // C throws one: guards investigate the clink
+export const SMOKE_PER_LEVEL = 2; // Q pops smoke: blinds cones nearby
+export const COIN_THROW_DIST = 3.0; // tiles ahead of the player
+export const COIN_NOISE_RADIUS = 4.0; // guards inside this come to look
+export const SMOKE_RADIUS = 3.0; // guards inside this are blinded
+export const SMOKE_DURATION = 3.0; // seconds a smoke cloud blinds
+// Scoring: loot is worth points, the objective item more, and a level
+// finished without ever raising the alarm pays the GHOST bonus.
+export const LOOT_SCORE = 100;
+export const RELIC_SCORE = 250;
+export const GHOST_BONUS = 500;
+
 export const LEVELS = [
   {
-    name: 'Level 1 — The Gallery',
-    tip: 'Two guards patrol the middle. Cross behind them, in the dark tiles.',
+    name: 'COLD STORAGE',
+    item: 'the Data Core',
+    itemColor: '#4dd8ff',
+    objective: 'Steal the Data Core, then reach the green exit',
+    tip: 'Two guards patrol the middle. Vents (V) link the cold rooms — press E to crawl. C throws a coin, Q pops smoke.',
     guardSpeed: 1.5,
     chaseSpeed: 2.7,
     map: [
       '####################',
-      '#P....#......~~...R#',
+      '#PV...#......~~...R#',
       '#.....#......~~....#',
-      '#.~~..#..~~........#',
+      '#.~~..#..$~........#',
       '#.~~..#..~~...#....#',
       '#.....#......#.....#',
       '#.####....####.....#',
       '#..................#',
-      '#....~~.....~~.....#',
+      '#....~~.....~~..$..#',
       '#....~~.....~~.....#',
       '#..................#',
-      '#..E...............#',
+      '#..E.$..........V..#',
       '####################',
     ],
     guards: [
@@ -59,7 +78,10 @@ export const LEVELS = [
     ],
   },
   {
-    name: 'Level 2 — The Vault Wing',
+    name: 'THE GLASSHOUSE',
+    item: 'the Jade Scarab',
+    itemColor: '#39d98a',
+    objective: 'Take the Jade Scarab, then reach the green exit',
     tip: 'Three guards, one on a vertical beat. Wait for the gap, then run the corridor.',
     guardSpeed: 1.8,
     chaseSpeed: 2.9,
@@ -67,13 +89,13 @@ export const LEVELS = [
       '####################',
       '#P..~~.#.....~~...R#',
       '#....~~.#.....~~...#',
-      '#.##...#..##.......#',
+      '#.##$..#..##.......#',
       '#......#......#....#',
       '#..~~..####..#..~~.#',
       '#..~~........#..~~.#',
-      '#......##....#.....#',
+      '#......##....#...$.#',
       '#.####.....####....#',
-      '#..................#',
+      '#.......$..........#',
       '#..~~....~~....~~..#',
       '#..~~....~~..E.~~..#',
       '####################',
@@ -85,7 +107,10 @@ export const LEVELS = [
     ],
   },
   {
-    name: 'Level 3 — The Inner Vault',
+    name: 'THE BANK VAULT',
+    item: 'the Star Sapphire',
+    itemColor: '#8fb0ff',
+    objective: 'Lift the Star Sapphire, then reach the green exit',
     tip: 'Four guards, fast patrols. The exit guard walks the vault door — time it.',
     guardSpeed: 2.1,
     chaseSpeed: 3.1,
@@ -95,12 +120,12 @@ export const LEVELS = [
       '#....#....~~..#....#',
       '#.~~.#..##....#..~~#',
       '#.~~.#..##....#..~~#',
-      '#....#........#....#',
+      '#..$.#........#....#',
       '#.####..####..###..#',
-      '#..................#',
+      '#.................$#',
       '#..~~...##...~~....#',
       '#..~~...##...~~....#',
-      '#......##.....#....#',
+      '#......##.$...#....#',
       '#..E....#.....#....#',
       '####################',
     ],
