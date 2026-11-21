@@ -1,10 +1,11 @@
-// Shadow Vault — renderer: everything the judge sees, drawn on one canvas.
-// Top-down museum at night: stone walls, a checkerboard floor, pools of
+// Coldwire — renderer: everything the judge sees, drawn on one canvas.
+// Top-down heists at night: stone walls, a checkerboard floor, pools of
 // shadow you can hide in, warm vision cones, a glowing exit door and the
-// gold relic. The player is teal; guards are red-orange so they read
-// against the floor at a glance.
+// named objective item in its own colour. The player is teal; guards are
+// red-orange so they read against the floor at a glance. A blinded guard's
+// cone goes grey; smoke hangs as a pale cloud; vents read as floor grates.
 
-import { TILE, COLS, ROWS, VISION_RANGE, VISION_HALF_ANGLE, NOISE_RADIUS } from './config.js';
+import { TILE, COLS, ROWS, LEVELS, VISION_RANGE, VISION_HALF_ANGLE, NOISE_RADIUS, SMOKE_RADIUS } from './config.js';
 
 const FLOOR_A = '#232a3d';
 const FLOOR_B = '#1e2436';
@@ -13,6 +14,7 @@ const WALL_FACE = '#2e3550';
 const SHADOW_TILE = '#0b0e1a';
 const CONE_COLOR = 'rgba(255, 196, 66, 0.20)';
 const CONE_ALERT = 'rgba(255, 70, 60, 0.30)';
+const CONE_BLIND = 'rgba(160, 170, 190, 0.10)';
 
 export class Renderer {
   constructor(canvas) {
@@ -36,11 +38,15 @@ export class Renderer {
     const { world, player, guards } = game;
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     this.drawFloor(world);
+    this.drawVents(world);
     this.drawExit(world);
-    this.drawRelic(world, game.time);
+    this.drawRelic(world, game);
+    this.drawLoot(world);
     this.drawNoiseRings(player);
-    for (const g of guards) this.drawVisionCone(g, world);
-    for (const g of guards) this.drawGuard(g);
+    this.drawCoins(game);
+    this.drawSmoke(game);
+    for (const g of guards) this.drawVisionCone(g, world, game.time);
+    for (const g of guards) this.drawGuard(g, game.time);
     this.drawPlayer(player);
     this.drawMotes(game.time);
     this.drawVignette();
@@ -81,6 +87,24 @@ export class Renderer {
     }
   }
 
+  drawVents(world) {
+    const { ctx } = this;
+    for (const v of world.vents) {
+      const px = (v.x - 0.5) * TILE;
+      const py = (v.y - 0.5) * TILE;
+      ctx.fillStyle = '#11141f';
+      ctx.fillRect(px + 6, py + 6, TILE - 12, TILE - 12);
+      ctx.strokeStyle = '#5a6a90';
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 3; i++) {
+        ctx.beginPath();
+        ctx.moveTo(px + 12, py + 14 + i * 10);
+        ctx.lineTo(px + TILE - 12, py + 14 + i * 10);
+        ctx.stroke();
+      }
+    }
+  }
+
   drawExit(world) {
     const { ctx } = this;
     const e = world.exit;
@@ -102,24 +126,50 @@ export class Renderer {
     ctx.fillText('EXIT', cx, cy + 1);
   }
 
-  drawRelic(world, time) {
+  drawRelic(world, game) {
     const { ctx } = this;
+    if (game.player.hasRelic) return;
+    // The objective item glows in its own colour and is named under the
+    // diamond, so the heist's prize reads at a glance.
+    const level = LEVELS[game.levelIndex];
     const r = world.relic;
     const cx = r.x * TILE;
-    const cy = r.y * TILE + Math.sin(time * 2) * 2;
+    const cy = r.y * TILE + Math.sin(game.time * 2) * 2;
     const glow = ctx.createRadialGradient(cx, cy, 2, cx, cy, 40);
-    glow.addColorStop(0, 'rgba(255, 210, 80, 0.5)');
-    glow.addColorStop(1, 'rgba(255, 210, 80, 0)');
+    glow.addColorStop(0, level.itemColor + '80');
+    glow.addColorStop(1, level.itemColor + '00');
     ctx.fillStyle = glow;
     ctx.fillRect(cx - 40, cy - 40, 80, 80);
     ctx.save();
     ctx.translate(cx, cy);
     ctx.rotate(Math.PI / 4);
-    ctx.fillStyle = '#ffd250';
+    ctx.fillStyle = level.itemColor;
     ctx.fillRect(-9, -9, 18, 18);
-    ctx.fillStyle = '#fff3c4';
+    ctx.fillStyle = '#ffffff';
     ctx.fillRect(-9, -9, 18, 6);
     ctx.restore();
+    ctx.fillStyle = level.itemColor;
+    ctx.font = 'bold 10px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText(level.item.toUpperCase(), cx, cy + 16);
+  }
+
+  drawLoot(world) {
+    const { ctx } = this;
+    for (const l of world.loot) {
+      if (l.taken) continue;
+      const cx = l.x * TILE;
+      const cy = l.y * TILE;
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(Math.PI / 4);
+      ctx.fillStyle = '#ffd250';
+      ctx.fillRect(-5, -5, 10, 10);
+      ctx.fillStyle = '#fff3c4';
+      ctx.fillRect(-5, -5, 10, 3);
+      ctx.restore();
+    }
   }
 
   drawNoiseRings(player) {
@@ -134,9 +184,42 @@ export class Renderer {
     }
   }
 
+  // Thrown coins ring once where they land, then sit and glint.
+  drawCoins(game) {
+    const { ctx } = this;
+    for (const c of game.coins) {
+      const t = Math.min(1, c.age / 0.6);
+      ctx.strokeStyle = `rgba(255, 210, 80, ${0.7 * (1 - t)})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(c.x * TILE, c.y * TILE, 10 + 26 * t, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = '#ffd250';
+      ctx.beginPath();
+      ctx.arc(c.x * TILE, c.y * TILE, 5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  drawSmoke(game) {
+    const { ctx } = this;
+    for (const s of game.smokes) {
+      const left = s.until - game.time;
+      // Fades in the last second; kept light so the floor still reads.
+      const alpha = Math.max(0, Math.min(1, left / 1.2)) * 0.32;
+      const g = ctx.createRadialGradient(s.x * TILE, s.y * TILE, 4, s.x * TILE, s.y * TILE, SMOKE_RADIUS * TILE);
+      g.addColorStop(0, `rgba(200, 205, 215, ${alpha})`);
+      g.addColorStop(1, 'rgba(200, 205, 215, 0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(s.x * TILE, s.y * TILE, SMOKE_RADIUS * TILE, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
   // The cone is a fan of rays: each ray stops at the first wall, so the
   // cone wraps around cover exactly like the guard's sight does.
-  drawVisionCone(guard, world) {
+  drawVisionCone(guard, world, now) {
     const { ctx } = this;
     const gx = guard.x * TILE;
     const gy = guard.y * TILE;
@@ -149,9 +232,13 @@ export class Renderer {
       ctx.lineTo(end.x * TILE, end.y * TILE);
     }
     ctx.closePath();
-    ctx.fillStyle = guard.state === 'alert' ? CONE_ALERT : CONE_COLOR;
+    if (guard.isBlinded(now)) {
+      ctx.fillStyle = CONE_BLIND;
+    } else {
+      ctx.fillStyle = guard.state === 'alert' ? CONE_ALERT : CONE_COLOR;
+    }
     ctx.fill();
-    ctx.strokeStyle = 'rgba(255, 210, 90, 0.25)';
+    ctx.strokeStyle = guard.isBlinded(now) ? 'rgba(160, 170, 190, 0.2)' : 'rgba(255, 210, 90, 0.25)';
     ctx.lineWidth = 1;
     ctx.stroke();
   }
@@ -168,16 +255,17 @@ export class Renderer {
     return { x: x + Math.cos(angle) * d, y: y + Math.sin(angle) * d };
   }
 
-  drawGuard(guard) {
+  drawGuard(guard, now) {
     const { ctx } = this;
     const cx = guard.x * TILE;
     const cy = guard.y * TILE;
-    // Body: red-orange so it reads against the blue floor.
-    ctx.fillStyle = guard.state === 'alert' ? '#ff3b30' : '#e8622c';
+    const blinded = guard.isBlinded(now);
+    // Body: red-orange so it reads against the blue floor; grey when blinded.
+    ctx.fillStyle = blinded ? '#8a93a8' : guard.state === 'alert' ? '#ff3b30' : '#e8622c';
     ctx.beginPath();
     ctx.arc(cx, cy, 13, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = '#ffd9c2';
+    ctx.fillStyle = blinded ? '#d5dae6' : '#ffd9c2';
     ctx.beginPath();
     ctx.arc(cx, cy, 7, 0, Math.PI * 2);
     ctx.fill();
@@ -188,8 +276,14 @@ export class Renderer {
     ctx.moveTo(cx, cy);
     ctx.lineTo(cx + Math.cos(guard.facing) * 18, cy + Math.sin(guard.facing) * 18);
     ctx.stroke();
-    // State mark: '!' while alert, '?' while suspicious.
-    if (guard.state === 'alert' || guard.state === 'suspicious') {
+    // State mark: '!' while alert, '?' while suspicious, 'x' while blinded.
+    if (blinded) {
+      ctx.fillStyle = '#5a6a90';
+      ctx.font = 'bold 18px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText('x', cx, cy - 16);
+    } else if (guard.state === 'alert' || guard.state === 'suspicious') {
       ctx.fillStyle = guard.state === 'alert' ? '#ff3b30' : '#ffd250';
       ctx.font = 'bold 20px system-ui, sans-serif';
       ctx.textAlign = 'center';
@@ -224,6 +318,14 @@ export class Renderer {
     ctx.arc(2, 0, 8, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
+    // "HIDDEN" tag while the player stands in shadow.
+    if (player.inShadow()) {
+      ctx.fillStyle = '#39d98a';
+      ctx.font = 'bold 10px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillText('HIDDEN', cx, cy + 16);
+    }
   }
 
   drawMotes(time) {
@@ -266,12 +368,13 @@ export class Renderer {
   }
 
   drawTitle(game) {
-    this.overlay('SHADOW VAULT', [
-      'A night thief in the Blackwood Museum.',
-      'Steal the relic, reach the green EXIT — unseen.',
+    this.overlay('COLDWIRE', [
+      'Three named heists. One thief. No alarm that matters.',
+      'Steal the named item, grab the loot, reach the green EXIT — unseen.',
       '',
       'WASD / arrows — move    Shift — run (loud!)    Click — walk here',
-      'Hide in the dark tiles. A full meter means the alarm.',
+      'C — throw a coin (guards investigate)    Q — smoke (blinds cones)',
+      'E — crawl a vent    Hide in the dark tiles.',
       '',
       'Press ENTER or click to begin',
     ], '#ffd250');
@@ -280,25 +383,27 @@ export class Renderer {
   drawCaught(game) {
     this.overlay('CAUGHT!', [
       `The guard caught you on ${game.levelName}.`,
-      'The museum keeps its relic — for now.',
+      'The crew keeps the item — for now.',
       '',
       'Press R to try again',
     ], '#ff3b30');
   }
 
   drawLevelClear(game) {
+    const ghost = game.levelAlarms === 0 ? `GHOST bonus +${game.ghostBonus} — never spotted!` : 'Spotted — no GHOST bonus this time.';
     this.overlay('CLEAN GETAWAY', [
-      `${game.levelName} — relic stolen, exit reached unseen.`,
-      `Time ${game.levelTimeText} — best ${game.bestTimeText}`,
+      `${game.levelName} — ${game.levelItem} stolen, exit reached.`,
+      ghost,
+      `Score ${game.score} — time ${game.levelTimeText} — best ${game.bestTimeText}`,
       '',
       'Press ENTER for the next level',
     ], '#39d98a');
   }
 
   drawWin(game) {
-    this.overlay('THE VAULT IS YOURS', [
-      'Three relics, three clean getaways, no alarm that mattered.',
-      `Total time ${game.totalTimeText} — best ${game.bestTimeText}`,
+    this.overlay('THE CREW IS RICH', [
+      'Three heists, three clean getaways, no alarm that mattered.',
+      `Final score ${game.score} — total time ${game.totalTimeText} — best ${game.bestTimeText}`,
       '',
       'Press R to play again',
     ], '#ffd250');
