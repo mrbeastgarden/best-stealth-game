@@ -1,8 +1,16 @@
-// Shadow Vault — the player: smooth tile movement, running noise, relic.
+// Coldwire — the player: smooth tile movement, running noise, gadgets.
 // The player walks with keys or toward a mouse click; holding Shift runs,
 // which is faster but loud — every step sends a noise pulse guards can hear.
+// Gadgets: C throws a coin ahead (guards investigate the clink), Q pops a
+// smoke cloud at the player's feet (blinds nearby cones).
 
-import { PLAYER_WALK, PLAYER_RUN, NOISE_PULSE_EVERY } from './config.js';
+import {
+  PLAYER_WALK,
+  PLAYER_RUN,
+  NOISE_PULSE_EVERY,
+  COINS_PER_LEVEL,
+  SMOKE_PER_LEVEL,
+} from './config.js';
 
 export class Player {
   constructor(world) {
@@ -19,6 +27,11 @@ export class Player {
     this.hasRelic = false;
     this.emitNoise = false; // set for one frame when a run pulse goes out
     this.noisePulses = []; // {x, y, age} rings the renderer draws
+    // Gadgets refresh every level: a fresh pouch of coins and smoke, and
+    // the loot count starts over for the new heist.
+    this.coins = COINS_PER_LEVEL;
+    this.smoke = SMOKE_PER_LEVEL;
+    this.lootTaken = 0;
   }
 
   reset(world) {
@@ -34,6 +47,23 @@ export class Player {
     this.hasRelic = false;
     this.emitNoise = false;
     this.noisePulses = [];
+    this.coins = COINS_PER_LEVEL;
+    this.smoke = SMOKE_PER_LEVEL;
+    this.lootTaken = 0;
+  }
+
+  // Spend one coin; false when the pouch is empty.
+  useCoin() {
+    if (this.coins <= 0) return false;
+    this.coins -= 1;
+    return true;
+  }
+
+  // Spend one smoke; false when the pouch is empty.
+  useSmoke() {
+    if (this.smoke <= 0) return false;
+    this.smoke -= 1;
+    return true;
   }
 
   // keys: {up, down, left, right, run} — true while held.
