@@ -1,6 +1,7 @@
-// Shadow Vault — the map: tile queries, line of sight, reachability.
+// Coldwire — the map: tile queries, line of sight, reachability.
 // The world is a grid of characters; the renderer and the guards both ask
 // it the same questions, so a wall blocks sight exactly where it blocks feet.
+// Vents ('V') and loot ('$') are floor tiles with something on them.
 
 import { COLS, ROWS } from './config.js';
 
@@ -12,12 +13,16 @@ export class World {
     this.playerStart = null;
     this.relic = null;
     this.exit = null;
+    this.vents = []; // {x, y} tile centres, in tile units
+    this.loot = []; // {x, y, taken} in tile units
     for (let y = 0; y < this.height; y++) {
       for (let x = 0; x < this.width; x++) {
         const c = mapRows[y][x];
         if (c === 'P') this.playerStart = { x: x + 0.5, y: y + 0.5 };
         if (c === 'R') this.relic = { x: x + 0.5, y: y + 0.5 };
         if (c === 'E') this.exit = { x: x + 0.5, y: y + 0.5 };
+        if (c === 'V') this.vents.push({ x: x + 0.5, y: y + 0.5 });
+        if (c === '$') this.loot.push({ x: x + 0.5, y: y + 0.5, taken: false });
       }
     }
   }
@@ -43,6 +48,31 @@ export class World {
   // True when the tile (in tile units, may be fractional) is a wall.
   blocksPoint(px, py) {
     return this.isWall(Math.floor(px), Math.floor(py));
+  }
+
+  // The vent whose tile the player stands on (within 0.7 tiles), or null.
+  ventNear(px, py) {
+    for (const v of this.vents) {
+      if (Math.hypot(px - v.x, py - v.y) < 0.7) return v;
+    }
+    return null;
+  }
+
+  // The vent paired with the given one (vents come in pairs, so the
+  // player who crawls in at one end comes out at the other).
+  ventPair(v) {
+    for (const other of this.vents) {
+      if (other !== v) return other;
+    }
+    return null;
+  }
+
+  // Uncollected loot within reach of the player, or null.
+  lootNear(px, py) {
+    for (const l of this.loot) {
+      if (!l.taken && Math.hypot(px - l.x, py - l.y) < 0.6) return l;
+    }
+    return null;
   }
 
   // Circle (in tile units) against walls: used for smooth player movement.
@@ -130,11 +160,24 @@ export function validateLevel(level, index) {
   if (!world.playerStart) throw new Error(`level ${index}: no player start (P)`);
   if (!world.relic) throw new Error(`level ${index}: no relic (R)`);
   if (!world.exit) throw new Error(`level ${index}: no exit (E)`);
+  if (world.vents.length !== 0 && world.vents.length !== 2) {
+    throw new Error(`level ${index}: vents must come in pairs, found ${world.vents.length}`);
+  }
   const reached = world.reachableFromStart();
   const relicKey = Math.floor(world.relic.x) + ',' + Math.floor(world.relic.y);
   const exitKey = Math.floor(world.exit.x) + ',' + Math.floor(world.exit.y);
   if (!reached.has(relicKey)) throw new Error(`level ${index}: relic unreachable`);
   if (!reached.has(exitKey)) throw new Error(`level ${index}: exit unreachable`);
+  for (const v of world.vents) {
+    if (!reached.has(Math.floor(v.x) + ',' + Math.floor(v.y))) {
+      throw new Error(`level ${index}: vent at ${v.x},${v.y} unreachable`);
+    }
+  }
+  for (const l of world.loot) {
+    if (!reached.has(Math.floor(l.x) + ',' + Math.floor(l.y))) {
+      throw new Error(`level ${index}: loot at ${l.x},${l.y} unreachable`);
+    }
+  }
   for (const [gi, g] of guards.entries()) {
     for (const [wx, wy] of g.waypoints) {
       if (!world.isFloor(wx, wy)) throw new Error(`level ${index} guard ${gi}: waypoint ${wx},${wy} is not floor`);
