@@ -1,8 +1,10 @@
-// Shadow Vault — guards: waypoint patrols, vision cones, detection, alarm.
+// Coldwire — guards: waypoint patrols, vision cones, detection, alarm.
 // A guard's state machine: patrol -> suspicious (investigate a noise or a
 // glimpse) -> alert (chase the player) -> search -> patrol. Detection is a
 // shared 0..100 meter: it fills while any guard sees the player and drains
 // while nobody does, so the player always has a chance to recover.
+// Smoke blinds a guard: while blinded it cannot see the player at all and
+// its cone goes grey.
 
 import {
   VISION_RANGE,
@@ -45,11 +47,29 @@ export class Guard {
     this.investigatePoint = null;
     this.searchTime = 0;
     this.pauseTime = 0; // brief halt at each waypoint, so patrols read
+    // A blinded guard that was chasing loses the trail at once: smoke is
+    // the only tool that breaks an alarm before it reaches the player.
+    this.blindedUntil = 0; // game time until which smoke blinds this guard
+  }
+
+  // A smoke cloud at this guard's feet: it cannot see until `until`.
+  blind(until) {
+    this.blindedUntil = Math.max(this.blindedUntil, until);
+    if (this.state === 'alert') {
+      this.state = 'search';
+      this.searchTime = 0;
+    }
+  }
+
+  isBlinded(now) {
+    return now < this.blindedUntil;
   }
 
   // Does this guard see the player right now? Range, cone angle and a
   // wall-blocked line of sight must all agree. Shadow shortens the range.
-  canSee(world, px, py, playerInShadow) {
+  // A blinded guard sees nothing.
+  canSee(world, px, py, playerInShadow, now) {
+    if (this.isBlinded(now)) return false;
     const d = dist(this.x, this.y, px, py);
     const range = playerInShadow ? SHADOW_RANGE : VISION_RANGE;
     if (d > range) return false;
@@ -79,11 +99,11 @@ export class Guard {
     this.suspicion = Math.max(this.suspicion, 0.6);
   }
 
-  update(dt, world, player, detection) {
+  update(dt, world, player, detection, now) {
     this.stateTime += dt;
     const d = dist(this.x, this.y, player.x, player.y);
     const playerInShadow = world.isShadow(Math.floor(player.x), Math.floor(player.y));
-    const sees = this.canSee(world, player.x, player.y, playerInShadow);
+    const sees = this.canSee(world, player.x, player.y, playerInShadow, now);
 
     if (sees) {
       this.lastSeen = { x: player.x, y: player.y };
